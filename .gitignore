@@ -6,3 +6,5 @@ build/
 local.properties
 *.iml
 .claude/
+dist/
+*.spec

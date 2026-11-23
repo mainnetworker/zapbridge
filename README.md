@@ -3,9 +3,11 @@
 PC ↔ Android, Wi-Fi orqali tez fayl uzatish. (Keyingi bosqichlar: telefon = kamera, telefon = mikrofon.)
 
 ## PC
+`ZapBridge.exe` ni ishga tushiring — oynada PIN chiqadi. Yoki manba koddan:
 ```powershell
-python pc/server.py
+python pc/app.py
 ```
+.exe'ni o'zingiz yig'ish: `pip install pyinstaller` → `python -m PyInstaller --onefile --noconsole --name ZapBridge pc/app.py`
 - Ulashilgan papka: `~/ZapBridge` (PC'dan telefonga yuboriladigan fayllarni shu yerga qo'ying; telefondan kelganlar ham shu yerga tushadi).
 - Ekranda chiqqan 6 xonali PIN'ni telefonga kiriting.
 - Windows Firewall so'rasa — **Private network** uchun ruxsat bering (TCP 8765, UDP 8766).
