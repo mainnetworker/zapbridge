@@ -3,6 +3,7 @@ package dev.zapbridge
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -46,6 +47,10 @@ class MainActivity : Activity() {
             addView(Button(context).apply { text = "PC'ni topish"; setOnClickListener { savePin(); discover() } })
             addView(Button(context).apply { text = "PC'ga fayl yuborish"; setOnClickListener { pickFiles() } })
             addView(Button(context).apply { text = "PC fayllarini yangilash"; setOnClickListener { refresh() } })
+            addView(Button(context).apply {
+                text = micLabel()
+                setOnClickListener { text = micLabel(toggleMic()) }
+            })
             addView(ListView(context).apply {
                 adapter = list
                 setOnItemClickListener { _, _, i, _ -> download(names[i]) }
@@ -57,7 +62,25 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleShare(intent) }
 
-    private fun savePin() = prefs.edit().putString("pin", pin.text.toString()).apply()
+    private fun micLabel(on: Boolean = MicService.running) =
+        if (on) "🎙 Mikrofonni o'chirish" else "🎙 Telefon = PC mikrofoni"
+
+    /** Returns whether the mic is on after the click. */
+    private fun toggleMic(): Boolean {
+        val svc = Intent(this, MicService::class.java)
+        if (MicService.running) { MicService.running = false; stopService(svc); say("Mikrofon o'chirildi"); return false }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2)
+            say("Mikrofon ruxsatini bering va qayta bosing"); return false
+        }
+        val host = base?.let { Uri.parse(it).host } ?: run { say("Avval PC'ni toping"); return false }
+        savePin()
+        startForegroundService(svc.putExtra("host", host).putExtra("pin", prefs.getString("pin", "")))
+        say("Mikrofon PC'ga uzatilmoqda — PC'da 'CABLE Output'ni mikrofon qilib tanlang")
+        return true
+    }
+
+    private fun savePin() =prefs.edit().putString("pin", pin.text.toString()).apply()
     private fun say(msg: String) = runOnUiThread { status.text = msg }
 
     @Suppress("DEPRECATION") // typed overloads need API 33, minSdk is 29

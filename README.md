@@ -16,3 +16,10 @@ python pc/server.py
 2. PIN'ni kiriting → **PC'ni topish**.
 3. **PC'ga fayl yuborish**, yoki istalgan ilovada *Ulashish → ZapBridge*.
 4. Ro'yxatdagi faylni bossangiz — telefonning *Downloads* papkasiga tushadi.
+
+## Telefon = PC mikrofoni
+1. PC'ga bir marta [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) o'rnating va `pip install sounddevice`.
+2. Ilovada **🎙 Telefon = PC mikrofoni** ni bosing (ekran o'chsa ham ishlayveradi).
+3. Zoom / Discord / OBS'da mikrofon sifatida **CABLE Output** ni tanlang.
+
+Firewall: TCP 8767 ham ochiq bo'lsin.

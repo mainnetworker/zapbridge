@@ -101,9 +101,67 @@ def discovery():
             s.sendto(reply, addr)
 
 
+MIC_PORT = 8767
+MIC_RATE = 48000  # phone sends 16-bit mono PCM at this rate
+MIC_MAX_BUF = MIC_RATE * 2 // 10  # >100 ms queued -> drop old audio so latency can't creep up
+
+
+def mic_device():
+    """Output device that Windows apps see as a mic: VB-Cable's 'CABLE Input'."""
+    import sounddevice as sd
+    want = os.environ.get("ZAPBRIDGE_MIC_DEVICE", "CABLE Input")
+    for i, d in enumerate(sd.query_devices()):
+        if want.lower() in d["name"].lower() and d["max_output_channels"] > 0:
+            return i
+    return None
+
+
+def mic_client(conn: socket.socket):
+    import sounddevice as sd
+    with conn:
+        conn.settimeout(5)
+        head = b""  # MSG_WAITALL isn't allowed with a timeout on Windows, so loop
+        while len(head) < 7 and (part := conn.recv(7 - len(head))):
+            head += part
+        if not secrets.compare_digest(head, (PIN + "\n").encode()):
+            return
+        conn.settimeout(None)
+        dev = mic_device()
+        if dev is None:
+            print("  ! mic: 'CABLE Input' device not found (install VB-Cable)")
+            return
+        buf, lock = bytearray(), threading.Lock()
+
+        def play(out, frames, _time, _status):
+            n = frames * 2
+            with lock:
+                chunk = bytes(buf[:n])
+                del buf[:n]
+            out[:] = chunk + b"\0" * (n - len(chunk))  # underrun -> silence, not a glitch
+
+        print("  mic: phone microphone connected -> 'CABLE Output'")
+        with sd.RawOutputStream(MIC_RATE, channels=1, dtype="int16", device=dev,
+                                latency="low", callback=play):
+            while data := conn.recv(4096):
+                with lock:
+                    buf += data
+                    if len(buf) > MIC_MAX_BUF:
+                        del buf[:len(buf) - MIC_MAX_BUF // 3 & ~1]  # keep sample alignment
+        print("  mic: disconnected")
+
+
+def mic_server():
+    s = socket.create_server(("0.0.0.0", MIC_PORT))
+    while True:
+        conn, _ = s.accept()
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        threading.Thread(target=mic_client, args=(conn,), daemon=True).start()
+
+
 def main():
     SHARE_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=discovery, daemon=True).start()
+    threading.Thread(target=mic_server, daemon=True).start()
     print(f"ZapBridge ready. Shared folder: {SHARE_DIR}")
     print(f"PIN for the phone: {PIN}")
     ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), Handler).serve_forever()
