@@ -106,6 +106,14 @@ MIC_RATE = 48000  # phone sends 16-bit mono PCM at this rate
 MIC_MAX_BUF = MIC_RATE * 2 // 10  # >100 ms queued -> drop old audio so latency can't creep up
 
 
+def recv_exact(conn: socket.socket, n: int) -> bytes:
+    """MSG_WAITALL isn't allowed with a timeout on Windows, so loop."""
+    data = b""
+    while len(data) < n and (part := conn.recv(n - len(data))):
+        data += part
+    return data
+
+
 def mic_device():
     """Output device that Windows apps see as a mic: VB-Cable's 'CABLE Input'."""
     import sounddevice as sd
@@ -120,10 +128,7 @@ def mic_client(conn: socket.socket):
     import sounddevice as sd
     with conn:
         conn.settimeout(5)
-        head = b""  # MSG_WAITALL isn't allowed with a timeout on Windows, so loop
-        while len(head) < 7 and (part := conn.recv(7 - len(head))):
-            head += part
-        if not secrets.compare_digest(head, (PIN + "\n").encode()):
+        if not secrets.compare_digest(recv_exact(conn, 7), (PIN + "\n").encode()):
             return
         conn.settimeout(None)
         dev = mic_device()
@@ -150,18 +155,55 @@ def mic_client(conn: socket.socket):
         print("  mic: disconnected")
 
 
-def mic_server():
-    s = socket.create_server(("0.0.0.0", MIC_PORT))
+CAM_PORT = 8768
+
+
+def cam_client(conn: socket.socket):
+    """Frames: 1 byte rotation (x90 deg), 4 byte big-endian length, JPEG. Shown as 'OBS Virtual Camera'."""
+    import io
+    import numpy as np
+    import pyvirtualcam
+    from PIL import Image
+    with conn:
+        conn.settimeout(5)
+        if not secrets.compare_digest(recv_exact(conn, 7), (PIN + "\n").encode()):
+            return
+        conn.settimeout(None)
+        cam, frames = None, 0
+        try:
+            while len(head := recv_exact(conn, 5)) == 5:
+                jpeg = recv_exact(conn, int.from_bytes(head[1:], "big"))
+                img = Image.open(io.BytesIO(jpeg)).convert("RGB")
+                if head[0]:
+                    img = img.rotate(-90 * head[0], expand=True)
+                if cam and (cam.width, cam.height) != img.size:  # phone turned: reopen at new size
+                    cam.close(); cam = None
+                if cam is None:
+                    cam = pyvirtualcam.Camera(*img.size, fps=30, backend="obs")
+                    print(f"  cam: phone camera {img.size[0]}x{img.size[1]} -> '{cam.device}'")
+                cam.send(np.asarray(img))
+                frames += 1
+        except RuntimeError as e:  # pyvirtualcam: driver missing
+            print(f"  ! cam: {e} (install OBS Studio)")
+        finally:
+            if cam:
+                cam.close()
+        print(f"  cam: disconnected after {frames} frames")
+
+
+def tcp_server(port, handler):
+    s = socket.create_server(("0.0.0.0", port))
     while True:
         conn, _ = s.accept()
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        threading.Thread(target=mic_client, args=(conn,), daemon=True).start()
+        threading.Thread(target=handler, args=(conn,), daemon=True).start()
 
 
 def main():
     SHARE_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=discovery, daemon=True).start()
-    threading.Thread(target=mic_server, daemon=True).start()
+    threading.Thread(target=tcp_server, args=(MIC_PORT, mic_client), daemon=True).start()
+    threading.Thread(target=tcp_server, args=(CAM_PORT, cam_client), daemon=True).start()
     print(f"ZapBridge ready. Shared folder: {SHARE_DIR}")
     print(f"PIN for the phone: {PIN}")
     ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), Handler).serve_forever()

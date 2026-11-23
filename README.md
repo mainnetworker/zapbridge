@@ -23,3 +23,10 @@ python pc/server.py
 3. Zoom / Discord / OBS'da mikrofon sifatida **CABLE Output** ni tanlang.
 
 Firewall: TCP 8767 ham ochiq bo'lsin.
+
+## Telefon = PC web-kamerasi
+1. PC'ga bir marta [OBS Studio](https://obsproject.com) o'rnating (virtual kamera driveri uchun) va `pip install pyvirtualcam numpy pillow`.
+2. Ilovada **📷 Orqa kamera** yoki **🤳 Old kamera** ni bosing (qayta bosish — to'xtatadi).
+3. Zoom / Discord / Chrome'da kamera sifatida **OBS Virtual Camera** ni tanlang. OBS'ning o'zini ochish shart emas.
+
+Firewall: TCP 8768 ham ochiq bo'lsin.

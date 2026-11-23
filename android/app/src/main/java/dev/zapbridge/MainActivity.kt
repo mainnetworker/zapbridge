@@ -51,6 +51,8 @@ class MainActivity : Activity() {
                 text = micLabel()
                 setOnClickListener { text = micLabel(toggleMic()) }
             })
+            addView(Button(context).apply { text = "📷 Orqa kamera = PC web-kamera"; setOnClickListener { toggleCam(false) } })
+            addView(Button(context).apply { text = "🤳 Old kamera = PC web-kamera"; setOnClickListener { toggleCam(true) } })
             addView(ListView(context).apply {
                 adapter = list
                 setOnItemClickListener { _, _, i, _ -> download(names[i]) }
@@ -80,7 +82,20 @@ class MainActivity : Activity() {
         return true
     }
 
-    private fun savePin() =prefs.edit().putString("pin", pin.text.toString()).apply()
+    private fun toggleCam(front: Boolean) {
+        val svc = Intent(this, CameraService::class.java)
+        if (CameraService.running) { stopService(svc); return say("Kamera o'chirildi") }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 3)
+            return say("Kamera ruxsatini bering va qayta bosing")
+        }
+        val host = base?.let { Uri.parse(it).host } ?: return say("Avval PC'ni toping")
+        savePin()
+        startForegroundService(svc.putExtra("host", host).putExtra("pin", prefs.getString("pin", "")).putExtra("front", front))
+        say("Kamera uzatilmoqda — PC'da 'OBS Virtual Camera'ni tanlang. To'xtatish: istalgan kamera tugmasi")
+    }
+
+    private fun savePin() = prefs.edit().putString("pin", pin.text.toString()).apply()
     private fun say(msg: String) = runOnUiThread { status.text = msg }
 
     @Suppress("DEPRECATION") // typed overloads need API 33, minSdk is 29
